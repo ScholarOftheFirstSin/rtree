@@ -1,5 +1,6 @@
 package com.github.davidmoten.rtree;
 
+import com.github.davidmoten.rtree.geometry.Geometries;
 import com.github.davidmoten.rtree.geometry.Point;
 import com.github.davidmoten.rtree.geometry.Rectangle;
 import com.github.davidmoten.rtree.geometry.internal.PointDouble;
@@ -10,11 +11,7 @@ import com.github.davidmoten.rtree.internal.NonLeafDefault;
 import java.io.BufferedReader;
 import java.io.FileReader;
 import java.io.IOException;
-import java.util.ArrayList;
-import java.util.Comparator;
-import java.util.List;
-
-import java.util.PriorityQueue;
+import java.util.*;
 
 public class SkylineQuery {
 
@@ -157,6 +154,75 @@ public class SkylineQuery {
         }
     }
 
+    public List dynamicInsert (Entry insertedEntry, List<Entry<Integer, Point>> skylinePoints) {
+
+        Double x = ((Point) insertedEntry.geometry()).x();
+        Double y = ((Point) insertedEntry.geometry()).y();
+        for (int i = 0; i < skylinePoints.size(); i++) {
+            Double tempx = ((Point) skylinePoints.get(i).geometry()).x();
+            Double tempy = ((Point) skylinePoints.get(i).geometry()).y();
+            if (x >= tempx && y >= tempy) {
+                return skylinePoints;
+            } else if (x <= tempx && y <= tempy) {
+                skylinePoints.remove(i);
+                i--;
+            }
+        }
+        skylinePoints.add(insertedEntry);
+        return skylinePoints;
+    }
+
+    public List dynamicDelete (Entry deletedEntry, List<Entry<Integer, Point>> skylinePoints, RTree myTree) {
+        Collections.sort(skylinePoints, new Comparator<Entry<Integer, Point>>() {
+            @Override
+            public int compare(Entry<Integer, Point> o1, Entry<Integer, Point> o2) {
+                if (o1.geometry().x() > o2.geometry().x()) {
+                    return 1;
+                } else if (o1.geometry().x() < o2.geometry().x()) {
+                    return -1;
+                } else {
+                    return 0;
+                }
+            }
+        });
+        Double x = ((Point) deletedEntry.geometry()).x();
+        Double y = ((Point) deletedEntry.geometry()).y();
+        for (int i = 0; i < skylinePoints.size(); i++) {
+            Double tempx = ((Point) skylinePoints.get(i).geometry()).x();
+            Double tempy = ((Point) skylinePoints.get(i).geometry()).y();
+            if (x > tempx && y > tempy) {
+                return skylinePoints;
+            } else if (Double.compare(x, tempx) == 0 && Double.compare(y, tempy) == 0) {
+                Double x2;
+                Double y2;
+                if (i == skylinePoints.size() - 1) {
+                    x2 = 100.0;
+                    y2 = skylinePoints.get(i-1).geometry().y();
+
+                } else if (i == 0) {
+                    x2 = skylinePoints.get(i+1).geometry().x();
+                    y2 = 100.0;
+
+                }  else {
+                    x2 = skylinePoints.get(i+1).geometry().x();
+                    y2 = skylinePoints.get(i-1).geometry().y();
+
+                }
+                myTree = myTree.delete(deletedEntry);
+                Iterable<Entry<Integer, Point>> dominanceArea = myTree.search(Geometries.rectangle(x,y,x2,y2)).toBlocking().toIterable();
+                //List<Entry<Integer, Point>> dominanceArea = (List<Entry<Integer, Point>>) (myTree.search(Geometries.rectangle(x,y,x2,y2)).toBlocking().toIterable());
+                RTree<Integer, Point> rtree = RTree.create();
+                rtree = rtree.add(dominanceArea);
+                SkylineQuery sq = new SkylineQuery();
+                Iterable<Entry<Integer, Point>> newPoints = sq.skylineQuery(rtree);
+                skylinePoints.addAll((List<Entry<Integer, Point>>)newPoints);
+                skylinePoints.remove(i);
+                i--;
+            }
+        }
+        return skylinePoints;
+    }
+
 
     public static void main(String[] args) {
         RTree<Integer, Point> myTree = RTree.create();;
@@ -164,6 +230,20 @@ public class SkylineQuery {
         myTree = sq.importDataSet(myTree);
         Iterable<Entry<Integer, Point>> result = sq.skylineQuery(myTree);
         System.out.println(((ArrayList<Entry<Integer, Point>>)result).size());
+        for (Entry r : result) {
+            System.out.println(r);
+        }
+        System.out.println("__________________");
+        Entry insertedEntry = new EntryDefault(0, new PointDouble(33.91,20.07));
+        result = sq.dynamicInsert(insertedEntry, (List<Entry<Integer, Point>>) result);
+        myTree = myTree.add(insertedEntry);
+        for (Entry r : result) {
+            System.out.println(r);
+        }
+        Entry deletedEntry = new EntryDefault(36517, new PointDouble(33.92, 20.08));
+        result = sq.dynamicDelete(deletedEntry, (List<Entry<Integer, Point>>) result, myTree);
+        myTree = myTree.delete(deletedEntry);
+        System.out.println("__________________");
         for (Entry r : result) {
             System.out.println(r);
         }
