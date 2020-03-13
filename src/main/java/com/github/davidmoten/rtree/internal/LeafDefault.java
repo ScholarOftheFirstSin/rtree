@@ -65,4 +65,7 @@ public final class LeafDefault<T, S extends Geometry> implements Leaf<T, S> {
         return entries.get(i);
     }
 
+    public Rectangle getMbr() {
+        return mbr;
+    }
 }
